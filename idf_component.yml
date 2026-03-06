@@ -1,0 +1,11 @@
+version: "0.1.0"
+description: "USB HID gamepad library for ESP-IDF"
+url: "https://github.com/manuelmalvarez/esp-hid-gamepad"
+targets:
+  - esp32s2
+  - esp32s3
+dependencies:
+  idf:
+    version: ">=5.0"
+  espressif/tinyusb:
+    version: ">=0.19.0~2"

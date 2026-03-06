@@ -1,0 +1,12 @@
+build/
+.cache
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+cmake-build-*/
+test/build_check/
+
+.claude
+
+.idea
