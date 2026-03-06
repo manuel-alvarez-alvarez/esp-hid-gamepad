@@ -1,6 +1,6 @@
 # esp-gamepad-hid
 
-[![Component Registry](https://components.espressif.com/components/manuel-alvarez-alvarez/esp-gamepad-hid/badge.svg)](https://components.espressif.com/components/manuel-alvarez-alvarez/esp-gamepad-hid)
+[![Component Registry](https://components.espressif.com/components/manuel-alvarez-alvarez/esp-hid-gamepad/badge.svg)](https://components.espressif.com/components/manuel-alvarez-alvarez/esp-hid-gamepad)
 
 Runtime-configurable USB HID gamepad component for [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/) using [TinyUSB](https://github.com/hathach/tinyusb).
 
