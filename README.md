@@ -6,9 +6,10 @@ Runtime-configurable USB HID gamepad component for [ESP-IDF](https://docs.espres
 
 ## Features
 
-- Dynamic layout builder for buttons (up to 32) and axes (up to 8)
-- Automatic HID report descriptor generation with proper byte-aligned button padding
+- Dynamic layout builder for buttons (up to 32), hat switches (up to 4), and axes (up to 8)
+- Automatic HID report descriptor generation with proper byte-aligned padding
 - Per-button hysteresis thresholds (on/off) for noise-free input
+- Hat switches with raw device value mapping (positions[0]=N, clockwise) and null/centered state
 - 16-bit signed axes with configurable input range scaled to [-32767, 32767]
 - Configurable USB polling rate (default 1000 Hz)
 - VID/PID from config or auto-derived from manufacturer/product strings via FNV-1a hash
@@ -41,6 +42,8 @@ void app_main(void) {
     hid_gamepad_layout_t layout = {0};
     hid_gamepad_layout_add_button(&layout, 1, 0);
     hid_gamepad_layout_add_button(&layout, 1, 0);
+    static const int32_t hat_pos[] = {0, 1, 2, 3, 4, 5, 6, 7}; /* N, NE, E, SE, S, SW, W, NW */
+    hid_gamepad_layout_add_hat(&layout, /*centered=*/8, hat_pos, 8);
     hid_gamepad_layout_add_axis(&layout, HID_USAGE_DESKTOP_X, -1000, 1000);
     hid_gamepad_layout_add_axis(&layout, HID_USAGE_DESKTOP_Y, -1000, 1000);
 
@@ -53,10 +56,11 @@ void app_main(void) {
     hid_gamepad_report_init(&report, &layout);
 
     for (;;) {
-        hid_gamepad_report_set_axis(&report, 0, my_read_x());
-        hid_gamepad_report_set_axis(&report, 1, my_read_y());
         hid_gamepad_report_set_button(&report, 0, my_read_btn0());
         hid_gamepad_report_set_button(&report, 1, my_read_btn1());
+        hid_gamepad_report_set_hat(&report, 0, my_read_dpad());
+        hid_gamepad_report_set_axis(&report, 0, my_read_x());
+        hid_gamepad_report_set_axis(&report, 1, my_read_y());
         hid_gamepad_send_report(&report);
         vTaskDelay(pdMS_TO_TICKS(1));
     }
@@ -91,6 +95,7 @@ Fields set to `0` (or `-1` for `task_core`) use their defaults.
 | Function | Description |
 |---|---|
 | `hid_gamepad_layout_add_button(layout, on, off)` | Add a button with hysteresis thresholds (raw >= `on` → pressed, raw <= `off` → released) |
+| `hid_gamepad_layout_add_hat(layout, centered, positions, count)` | Add a hat switch with raw values for each direction (`positions[0]`=N, clockwise) and a centered/null value |
 | `hid_gamepad_layout_add_axis(layout, usage, in_min, in_max)` | Add a 16-bit signed axis with HID usage ID and device raw range |
 
 ### Functions
@@ -108,6 +113,7 @@ Fields set to `0` (or `-1` for `task_core`) use their defaults.
 |---|---|
 | `hid_gamepad_report_init(report, layout)` | Initialize a report buffer for the given layout |
 | `hid_gamepad_report_set_button(report, index, raw_value)` | Set a button state from a raw device value |
+| `hid_gamepad_report_set_hat(report, hat_index, raw_value)` | Set a hat switch from a raw device value (mapped to HID position automatically) |
 | `hid_gamepad_report_set_axis(report, axis_index, raw_value)` | Set an axis value from a raw device value (scaled automatically) |
 
 ## Testing
