@@ -249,11 +249,12 @@ bool hid_gamepad_report_set_button(hid_gamepad_report_buf_t *report,
         return false;
     uint8_t byte_idx = index / 8;
     uint8_t bit_idx = index % 8;
+    uint8_t old = report->data[byte_idx];
     if (raw_value >= report->layout->buttons[index].on)
         report->data[byte_idx] |= (1u << bit_idx);
     else if (raw_value <= report->layout->buttons[index].off)
         report->data[byte_idx] &= ~(1u << bit_idx);
-    return true;
+    return report->data[byte_idx] != old;
 }
 
 bool hid_gamepad_report_set_hat(hid_gamepad_report_buf_t *report,
@@ -276,11 +277,12 @@ bool hid_gamepad_report_set_hat(hid_gamepad_report_buf_t *report,
     }
 
     uint8_t byte_idx = report->hat_offset + hat_index / 2;
+    uint8_t old = report->data[byte_idx];
     if (hat_index % 2 == 0)
         report->data[byte_idx] = (report->data[byte_idx] & 0xF0) | (hid_val & 0x0F);
     else
         report->data[byte_idx] = (report->data[byte_idx] & 0x0F) | ((hid_val & 0x0F) << 4);
-    return true;
+    return report->data[byte_idx] != old;
 }
 
 bool hid_gamepad_report_set_axis(hid_gamepad_report_buf_t *report,
@@ -291,9 +293,12 @@ bool hid_gamepad_report_set_axis(hid_gamepad_report_buf_t *report,
                                 report->layout->axes[axis_index].in_min,
                                 report->layout->axes[axis_index].in_max);
     uint8_t off = report->axis_offset + axis_index * 2;
-    report->data[off] = (uint8_t) (scaled & 0xFF);
-    report->data[off + 1] = (uint8_t) ((uint16_t) scaled >> 8);
-    return true;
+    uint8_t lo = (uint8_t) (scaled & 0xFF);
+    uint8_t hi = (uint8_t) ((uint16_t) scaled >> 8);
+    bool changed = report->data[off] != lo || report->data[off + 1] != hi;
+    report->data[off] = lo;
+    report->data[off + 1] = hi;
+    return changed;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

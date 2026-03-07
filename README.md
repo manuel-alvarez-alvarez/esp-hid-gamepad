@@ -112,9 +112,9 @@ Fields set to `0` (or `-1` for `task_core`) use their defaults.
 | Function | Description |
 |---|---|
 | `hid_gamepad_report_init(report, layout)` | Initialize a report buffer for the given layout |
-| `hid_gamepad_report_set_button(report, index, raw_value)` | Set a button state from a raw device value |
-| `hid_gamepad_report_set_hat(report, hat_index, raw_value)` | Set a hat switch from a raw device value (mapped to HID position automatically) |
-| `hid_gamepad_report_set_axis(report, axis_index, raw_value)` | Set an axis value from a raw device value (scaled automatically) |
+| `hid_gamepad_report_set_button(report, index, raw_value)` | Set a button state from a raw device value; returns `true` if the report changed |
+| `hid_gamepad_report_set_hat(report, hat_index, raw_value)` | Set a hat switch from a raw device value (mapped automatically); returns `true` if the report changed |
+| `hid_gamepad_report_set_axis(report, axis_index, raw_value)` | Set an axis value from a raw device value (scaled automatically); returns `true` if the report changed |
 
 ## Testing
 

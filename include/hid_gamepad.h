@@ -75,7 +75,7 @@ typedef struct {
 
 void hid_gamepad_report_init(hid_gamepad_report_buf_t *report, hid_gamepad_layout_t *layout);
 
-/* ── Field setters (take raw device values) */
+/* ── Field setters (take raw device values, return true if the report changed) */
 
 bool hid_gamepad_report_set_button(hid_gamepad_report_buf_t *report,
                                    uint8_t index, int32_t raw_value);
