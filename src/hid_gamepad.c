@@ -373,7 +373,7 @@ static esp_err_t try_send_report(void) {
 static void usb_device_task(void *arg) {
     (void) arg;
     while (s_running) {
-        tud_task_ext(10, false);
+        tud_task_ext(2, false);
         bool send = false;
         while (ulTaskNotifyTake(pdTRUE, 0) > 0) {
             send = true; // drain SOF ticks
