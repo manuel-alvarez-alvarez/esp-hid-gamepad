@@ -383,14 +383,15 @@ static void usb_device_task(void *arg) {
 
 /* ── TinyUSB descriptor callbacks ──────────────────────────────────── */
 
-void IRAM_ATTR tud_sof_cb(const uint32_t frame_count) {
-    (void) frame_count;
+static void notify_report_pending(void) {
     TaskHandle_t t = s_task;
     if (!t) return;
-    BaseType_t hp = pdFALSE;
-    vTaskNotifyGiveFromISR(t, &hp);
-    if (hp)
-    portYIELD_FROM_ISR();
+    xTaskNotifyGive(t);
+}
+
+void tud_sof_cb(const uint32_t frame_count) {
+    (void) frame_count;
+    notify_report_pending();
 }
 
 uint8_t const *tud_descriptor_device_cb(void) {
@@ -490,7 +491,9 @@ void tud_hid_report_complete_cb(uint8_t instance, uint8_t const *report, uint16_
     (void) instance;
     (void) report;
     (void) len;
-    try_send_report();
+    if (try_send_report() != ESP_OK) {
+        notify_report_pending();
+    }
 }
 
 // Invoked when a transfer wasn't successful
@@ -499,7 +502,9 @@ void tud_hid_report_failed_cb(uint8_t instance, hid_report_type_t report_type, u
     (void) instance;
     (void) report;
     (void) xferred_bytes;
-    try_send_report();
+    if (try_send_report() != ESP_OK) {
+        notify_report_pending();
+    }
 }
 
 /* ── Public API ────────────────────────────────────────────────────── */
