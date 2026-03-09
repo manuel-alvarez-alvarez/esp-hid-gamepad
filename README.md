@@ -1,4 +1,4 @@
-# esp-gamepad-hid
+# esp-hid-gamepad
 
 [![Component Registry](https://components.espressif.com/components/manuel-alvarez-alvarez/esp-hid-gamepad/badge.svg)](https://components.espressif.com/components/manuel-alvarez-alvarez/esp-hid-gamepad)
 
@@ -25,7 +25,7 @@ Runtime-configurable USB HID gamepad component for [ESP-IDF](https://docs.espres
 ### ESP-IDF Component Registry
 
 ```bash
-idf.py add-dependency "manuel-alvarez-alvarez/esp-gamepad-hid"
+idf.py add-dependency "manuel-alvarez-alvarez/esp-hid-gamepad"
 ```
 
 ### Manual
