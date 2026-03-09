@@ -349,12 +349,10 @@ static volatile bool s_running;
 static bool s_initialized;
 static uint16_t s_report_size;
 static uint8_t s_report_data[HID_GAMEPAD_MAX_REPORT_LENGTH];
-static volatile bool s_report_pending;
-
 /* ── TinyUSB device task ──────────────────────────────────────────── */
 
 static esp_err_t try_send_report(void) {
-    if (!s_report_pending || s_report_size == 0) {
+    if (s_report_size == 0) {
         return ESP_OK;
     }
     if (!s_mounted) {
@@ -366,7 +364,6 @@ static esp_err_t try_send_report(void) {
     if (!tud_hid_report(0, s_report_data, s_report_size)) {
         return ESP_FAIL;
     }
-    s_report_pending = false;
     return ESP_OK;
 }
 
@@ -391,14 +388,15 @@ static void usb_device_task(void *arg) {
 
 /* ── TinyUSB descriptor callbacks ──────────────────────────────────── */
 
-void IRAM_ATTR tud_sof_cb(const uint32_t frame_count) {
-    (void) frame_count;
+static void notify_report_pending(void) {
     TaskHandle_t t = s_task;
     if (!t) return;
-    BaseType_t hp = pdFALSE;
-    vTaskNotifyGiveFromISR(t, &hp);
-    if (hp)
-    portYIELD_FROM_ISR();
+    xTaskNotifyGive(t);
+}
+
+void tud_sof_cb(const uint32_t frame_count) {
+    (void) frame_count;
+    notify_report_pending();
 }
 
 uint8_t const *tud_descriptor_device_cb(void) {
@@ -498,7 +496,9 @@ void tud_hid_report_complete_cb(uint8_t instance, uint8_t const *report, uint16_
     (void) instance;
     (void) report;
     (void) len;
-    try_send_report();
+    if (try_send_report() != ESP_OK) {
+        notify_report_pending();
+    }
 }
 
 // Invoked when a transfer wasn't successful
@@ -507,8 +507,9 @@ void tud_hid_report_failed_cb(uint8_t instance, hid_report_type_t report_type, u
     (void) instance;
     (void) report;
     (void) xferred_bytes;
-    s_report_pending = true;
-    try_send_report();
+    if (try_send_report() != ESP_OK) {
+        notify_report_pending();
+    }
 }
 
 /* ── Public API ────────────────────────────────────────────────────── */
@@ -636,7 +637,6 @@ esp_err_t hid_gamepad_deinit(void) {
     s_initialized = false;
     s_mounted = false;
     s_report_desc_size = 0;
-    s_report_pending = false;
     s_report_size = 0;
 
     ESP_LOGI(TAG, "deinitialized");
@@ -653,7 +653,6 @@ esp_err_t hid_gamepad_send_report(hid_gamepad_report_buf_t *report) {
     }
     s_report_size = report->size;
     memcpy(s_report_data, report->data, s_report_size);
-    s_report_pending = true;
     return try_send_report();
 }
 
