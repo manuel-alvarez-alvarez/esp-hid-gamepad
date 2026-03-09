@@ -45,6 +45,7 @@ typedef struct {
 typedef struct {
     uint8_t count; /* total positions including "no button" (position 0) */
     int32_t values[HID_GAMEPAD_MAX_SWITCH_POSITIONS]; /* [0]=no button, [1..count-1]=button N */
+    uint8_t button_offset; /* starting button index for this switch */
 } hid_gamepad_switch_def_t;
 
 typedef struct {
@@ -84,6 +85,7 @@ typedef struct {
     uint16_t size;
     uint8_t hat_offset;
     uint8_t axis_offset;
+    uint8_t hat_cache[HID_GAMEPAD_MAX_HATS];
     uint8_t data[HID_GAMEPAD_MAX_REPORT_LENGTH];
 } hid_gamepad_report_buf_t;
 

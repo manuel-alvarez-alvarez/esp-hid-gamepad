@@ -273,6 +273,11 @@ bool hid_gamepad_layout_add_switch(hid_gamepad_layout_t *layout,
     hid_gamepad_switch_def_t *sw = &layout->switches[layout->switch_count];
     sw->count = count;
     memcpy(sw->values, values, count * sizeof(int32_t));
+    uint8_t btn_offset = layout->button_count;
+    for (uint8_t i = 0; i < layout->switch_count; i++) {
+        btn_offset += layout->switches[i].count - 1;
+    }
+    sw->button_offset = btn_offset;
     layout->switch_count++;
     return true;
 }
@@ -317,6 +322,7 @@ void hid_gamepad_report_init(hid_gamepad_report_buf_t *report, hid_gamepad_layou
     /* Initialize hats to null/centered (count value = outside logical range) */
     for (uint8_t i = 0; i < layout->hat_count; i++) {
         uint8_t null_val = layout->hats[i].count;
+        report->hat_cache[i] = null_val;
         uint8_t byte_idx = report->hat_offset + i / 2;
         if (i % 2 == 0)
             report->data[byte_idx] = (report->data[byte_idx] & 0xF0) | (null_val & 0x0F);
@@ -348,13 +354,20 @@ void hid_gamepad_report_set_hat(hid_gamepad_report_buf_t *report,
     if (raw_value == hat->centered) {
         /* already null */
     } else {
-        for (uint8_t i = 0; i < hat->count; i++) {
-            if (raw_value == hat->positions[i]) {
-                hid_val = i;
-                break;
+        uint8_t last = report->hat_cache[hat_index];
+        if (last < hat->count && raw_value == hat->positions[last]) {
+            hid_val = last;
+        } else {
+            for (uint8_t i = 0; i < hat->count; i++) {
+                if (raw_value == hat->positions[i]) {
+                    hid_val = i;
+                    break;
+                }
             }
         }
     }
+
+    report->hat_cache[hat_index] = (hid_val < hat->count) ? hid_val : hat->count;
 
     uint8_t byte_idx = report->hat_offset + hat_index / 2;
     if (hat_index % 2 == 0)
@@ -369,10 +382,7 @@ void hid_gamepad_report_set_switch(hid_gamepad_report_buf_t *report,
         return;
     const hid_gamepad_switch_def_t *sw = &report->layout->switches[switch_index];
 
-    /* Compute the button index where this switch's buttons start */
-    uint8_t btn_start = report->layout->button_count;
-    for (uint8_t i = 0; i < switch_index; i++)
-        btn_start += report->layout->switches[i].count - 1;
+    uint8_t btn_start = sw->button_offset;
 
     /* Find which position matches the raw value */
     uint8_t active = 0; /* 0 = no button (values[0] or unknown) */
