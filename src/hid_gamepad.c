@@ -344,12 +344,10 @@ static volatile bool s_running;
 static bool s_initialized;
 static uint16_t s_report_size;
 static uint8_t s_report_data[HID_GAMEPAD_MAX_REPORT_LENGTH];
-static volatile bool s_report_pending;
-
 /* ── TinyUSB device task ──────────────────────────────────────────── */
 
 static esp_err_t try_send_report(void) {
-    if (!s_report_pending || s_report_size == 0) {
+    if (s_report_size == 0) {
         return ESP_OK;
     }
     if (!s_mounted) {
@@ -361,7 +359,6 @@ static esp_err_t try_send_report(void) {
     if (!tud_hid_report(0, s_report_data, s_report_size)) {
         return ESP_FAIL;
     }
-    s_report_pending = false;
     return ESP_OK;
 }
 
@@ -631,7 +628,6 @@ esp_err_t hid_gamepad_deinit(void) {
     s_initialized = false;
     s_mounted = false;
     s_report_desc_size = 0;
-    s_report_pending = false;
     s_report_size = 0;
 
     ESP_LOGI(TAG, "deinitialized");
@@ -648,7 +644,6 @@ esp_err_t hid_gamepad_send_report(hid_gamepad_report_buf_t *report) {
     }
     s_report_size = report->size;
     memcpy(s_report_data, report->data, s_report_size);
-    s_report_pending = true;
     return try_send_report();
 }
 
