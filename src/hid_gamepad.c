@@ -48,15 +48,23 @@ static int16_t scale_axis(int32_t val, int32_t in_min, int32_t in_max) {
     return (int16_t) (((int64_t) (val - in_min) * HID_AXIS_RANGE) / (in_max - in_min) + HID_AXIS_MIN);
 }
 
+static uint8_t total_button_count(const hid_gamepad_layout_t *layout) {
+    uint8_t total = layout->button_count;
+    for (uint8_t i = 0; i < layout->switch_count; i++)
+        total += layout->switches[i].count - 1;
+    return total;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
  *  Descriptor builder
  * ═══════════════════════════════════════════════════════════════════════ */
 
 static size_t hid_gamepad_desc_size(const hid_gamepad_layout_t *layout) {
     size_t size = DESC_HEADER_SIZE;
-    if (layout->button_count > 0) {
+    uint8_t btn_total = total_button_count(layout);
+    if (btn_total > 0) {
         size += DESC_BUTTONS_SIZE;
-        uint8_t padding = (8 - (layout->button_count % 8)) % 8;
+        uint8_t padding = (8 - (btn_total % 8)) % 8;
         if (padding > 0)
             size += DESC_PADDING_SIZE;
     }
@@ -93,22 +101,23 @@ static size_t hid_gamepad_desc_build(const hid_gamepad_layout_t *layout,
         p += emit(buf, p, buf_size, hdr, sizeof(hdr));
     }
 
-    /* Buttons */
-    if (layout->button_count > 0) {
+    /* Buttons (explicit + switch-derived) */
+    uint8_t btn_total = total_button_count(layout);
+    if (btn_total > 0) {
         const uint8_t btn[] = {
             0x05, 0x09, /* Usage Page (Button) */
             0x19, 0x01, /* Usage Minimum (1) */
-            0x29, layout->button_count, /* Usage Maximum */
+            0x29, btn_total, /* Usage Maximum */
             0x15, 0x00, /* Logical Minimum (0) */
             0x25, 0x01, /* Logical Maximum (1) */
             0x75, 0x01, /* Report Size (1) */
-            0x95, layout->button_count, /* Report Count */
+            0x95, btn_total, /* Report Count */
             0x81, 0x02, /* Input (Data,Var,Abs) */
         };
         p += emit(buf, p, buf_size, btn, sizeof(btn));
 
         /* Pad to byte boundary */
-        uint8_t padding = (8 - (layout->button_count % 8)) % 8;
+        uint8_t padding = (8 - (btn_total % 8)) % 8;
         if (padding > 0) {
             const uint8_t pad[] = {
                 0x75, padding, /* Report Size (padding bits) */
@@ -209,6 +218,16 @@ void hid_gamepad_layout_add_hat(hid_gamepad_layout_t *layout,
     }
 }
 
+void hid_gamepad_layout_add_switch(hid_gamepad_layout_t *layout,
+                                    const int32_t *values, uint8_t count) {
+    if (layout->switch_count < HID_GAMEPAD_MAX_SWITCHES && count <= HID_GAMEPAD_MAX_SWITCH_POSITIONS) {
+        hid_gamepad_switch_def_t *sw = &layout->switches[layout->switch_count];
+        sw->count = count;
+        memcpy(sw->values, values, count * sizeof(int32_t));
+        layout->switch_count++;
+    }
+}
+
 void hid_gamepad_layout_add_axis(hid_gamepad_layout_t *layout,
                                  uint8_t usage, int32_t in_min, int32_t in_max) {
     if (layout->axis_count < HID_GAMEPAD_MAX_AXES) {
@@ -226,7 +245,7 @@ void hid_gamepad_layout_add_axis(hid_gamepad_layout_t *layout,
 void hid_gamepad_report_init(hid_gamepad_report_buf_t *report, hid_gamepad_layout_t *layout) {
     memset(report, 0, sizeof(*report));
     report->layout = layout;
-    uint8_t btn_bytes = (layout->button_count + 7) / 8;
+    uint8_t btn_bytes = (total_button_count(layout) + 7) / 8;
     uint8_t hat_bytes = (layout->hat_count + 1) / 2; /* 4 bits each, rounded up */
     report->hat_offset = btn_bytes;
     report->axis_offset = btn_bytes + hat_bytes;
@@ -243,24 +262,22 @@ void hid_gamepad_report_init(hid_gamepad_report_buf_t *report, hid_gamepad_layou
     }
 }
 
-bool hid_gamepad_report_set_button(hid_gamepad_report_buf_t *report,
+void hid_gamepad_report_set_button(hid_gamepad_report_buf_t *report,
                                    uint8_t index, int32_t raw_value) {
     if (index >= report->layout->button_count)
-        return false;
+        return;
     uint8_t byte_idx = index / 8;
     uint8_t bit_idx = index % 8;
-    uint8_t old = report->data[byte_idx];
     if (raw_value >= report->layout->buttons[index].on)
         report->data[byte_idx] |= (1u << bit_idx);
     else if (raw_value <= report->layout->buttons[index].off)
         report->data[byte_idx] &= ~(1u << bit_idx);
-    return report->data[byte_idx] != old;
 }
 
-bool hid_gamepad_report_set_hat(hid_gamepad_report_buf_t *report,
+void hid_gamepad_report_set_hat(hid_gamepad_report_buf_t *report,
                                 uint8_t hat_index, int32_t raw_value) {
     if (hat_index >= report->layout->hat_count)
-        return false;
+        return;
     const hid_gamepad_hat_def_t *hat = &report->layout->hats[hat_index];
 
     /* Map raw value to HID position: match positions first, then centered, else null */
@@ -277,28 +294,54 @@ bool hid_gamepad_report_set_hat(hid_gamepad_report_buf_t *report,
     }
 
     uint8_t byte_idx = report->hat_offset + hat_index / 2;
-    uint8_t old = report->data[byte_idx];
     if (hat_index % 2 == 0)
         report->data[byte_idx] = (report->data[byte_idx] & 0xF0) | (hid_val & 0x0F);
     else
         report->data[byte_idx] = (report->data[byte_idx] & 0x0F) | ((hid_val & 0x0F) << 4);
-    return report->data[byte_idx] != old;
 }
 
-bool hid_gamepad_report_set_axis(hid_gamepad_report_buf_t *report,
+void hid_gamepad_report_set_switch(hid_gamepad_report_buf_t *report,
+                                    uint8_t switch_index, int32_t raw_value) {
+    if (switch_index >= report->layout->switch_count)
+        return;
+    const hid_gamepad_switch_def_t *sw = &report->layout->switches[switch_index];
+
+    /* Compute the button index where this switch's buttons start */
+    uint8_t btn_start = report->layout->button_count;
+    for (uint8_t i = 0; i < switch_index; i++)
+        btn_start += report->layout->switches[i].count - 1;
+
+    /* Find which position matches the raw value */
+    uint8_t active = 0; /* 0 = no button (values[0] or unknown) */
+    for (uint8_t i = 0; i < sw->count; i++) {
+        if (raw_value == sw->values[i]) {
+            active = i; /* 0 = no button, 1..count-1 = button index */
+            break;
+        }
+    }
+
+    /* Set/clear the switch's buttons */
+    for (uint8_t i = 0; i < sw->count - 1; i++) {
+        uint8_t btn_idx = btn_start + i;
+        uint8_t byte_idx = btn_idx / 8;
+        uint8_t bit_idx = btn_idx % 8;
+        if (active == i + 1)
+            report->data[byte_idx] |= (1u << bit_idx);
+        else
+            report->data[byte_idx] &= ~(1u << bit_idx);
+    }
+}
+
+void hid_gamepad_report_set_axis(hid_gamepad_report_buf_t *report,
                                  uint8_t axis_index, int32_t raw_value) {
     if (axis_index >= report->layout->axis_count)
-        return false;
+        return;
     int16_t scaled = scale_axis(raw_value,
                                 report->layout->axes[axis_index].in_min,
                                 report->layout->axes[axis_index].in_max);
     uint8_t off = report->axis_offset + axis_index * 2;
-    uint8_t lo = (uint8_t) (scaled & 0xFF);
-    uint8_t hi = (uint8_t) ((uint16_t) scaled >> 8);
-    bool changed = report->data[off] != lo || report->data[off + 1] != hi;
-    report->data[off] = lo;
-    report->data[off + 1] = hi;
-    return changed;
+    report->data[off] = (uint8_t) (scaled & 0xFF);
+    report->data[off + 1] = (uint8_t) ((uint16_t) scaled >> 8);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

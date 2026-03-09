@@ -37,18 +37,23 @@ extern void test_builder_hat_init_centered(void);
 extern void test_builder_hat_set_direction(void);
 extern void test_builder_hat_two_hats_packed(void);
 extern void test_builder_hat_with_buttons_offsets(void);
-extern void test_builder_hat_out_of_range_returns_false(void);
+extern void test_builder_hat_out_of_range_is_noop(void);
 extern void test_builder_hat_custom_raw_values(void);
 
-extern void test_builder_button_returns_true_on_change(void);
-extern void test_builder_button_hysteresis_no_change(void);
-extern void test_builder_hat_returns_true_on_change(void);
-extern void test_builder_axis_returns_true_on_change(void);
+extern void test_builder_button_hysteresis(void);
 
 extern void test_builder_scale_axis_endpoints(void);
 extern void test_builder_scale_axis_midpoint(void);
 extern void test_builder_scale_axis_signed_range(void);
 extern void test_builder_scale_button_threshold(void);
+
+/* Switch tests */
+extern void test_builder_switch_adds_buttons(void);
+extern void test_builder_switch_set_positions(void);
+extern void test_builder_switch_no_match_clears_all(void);
+extern void test_builder_switch_with_buttons_offsets(void);
+extern void test_builder_switch_out_of_range_is_noop(void);
+extern void test_builder_two_switches(void);
 
 int main(int argc, char *argv[])
 {
@@ -82,20 +87,25 @@ int main(int argc, char *argv[])
     RUN_FILTERED_TEST(test_builder_hat_set_direction);
     RUN_FILTERED_TEST(test_builder_hat_two_hats_packed);
     RUN_FILTERED_TEST(test_builder_hat_with_buttons_offsets);
-    RUN_FILTERED_TEST(test_builder_hat_out_of_range_returns_false);
+    RUN_FILTERED_TEST(test_builder_hat_out_of_range_is_noop);
     RUN_FILTERED_TEST(test_builder_hat_custom_raw_values);
 
-    /* Builder: changed-value returns */
-    RUN_FILTERED_TEST(test_builder_button_returns_true_on_change);
-    RUN_FILTERED_TEST(test_builder_button_hysteresis_no_change);
-    RUN_FILTERED_TEST(test_builder_hat_returns_true_on_change);
-    RUN_FILTERED_TEST(test_builder_axis_returns_true_on_change);
+    /* Builder: hysteresis */
+    RUN_FILTERED_TEST(test_builder_button_hysteresis);
 
     /* Builder: scaling */
     RUN_FILTERED_TEST(test_builder_scale_axis_endpoints);
     RUN_FILTERED_TEST(test_builder_scale_axis_midpoint);
     RUN_FILTERED_TEST(test_builder_scale_axis_signed_range);
     RUN_FILTERED_TEST(test_builder_scale_button_threshold);
+
+    /* Builder: switches */
+    RUN_FILTERED_TEST(test_builder_switch_adds_buttons);
+    RUN_FILTERED_TEST(test_builder_switch_set_positions);
+    RUN_FILTERED_TEST(test_builder_switch_no_match_clears_all);
+    RUN_FILTERED_TEST(test_builder_switch_with_buttons_offsets);
+    RUN_FILTERED_TEST(test_builder_switch_out_of_range_is_noop);
+    RUN_FILTERED_TEST(test_builder_two_switches);
 
     return UNITY_END();
 }

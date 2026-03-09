@@ -13,10 +13,12 @@ extern "C" {
  *  Layout & Report Builder
  * ═══════════════════════════════════════════════════════════════════════ */
 
-#define HID_GAMEPAD_MAX_AXES            8
-#define HID_GAMEPAD_MAX_BUTTONS         32
-#define HID_GAMEPAD_MAX_HATS            4
-#define HID_GAMEPAD_MAX_HAT_POSITIONS   8
+#define HID_GAMEPAD_MAX_AXES              8
+#define HID_GAMEPAD_MAX_BUTTONS           32
+#define HID_GAMEPAD_MAX_HATS              4
+#define HID_GAMEPAD_MAX_HAT_POSITIONS     8
+#define HID_GAMEPAD_MAX_SWITCHES          4
+#define HID_GAMEPAD_MAX_SWITCH_POSITIONS  8
 
 #define HID_GAMEPAD_MAX_REPORT_LENGTH 64
 
@@ -40,10 +42,17 @@ typedef struct {
 } hid_gamepad_hat_def_t;
 
 typedef struct {
+    uint8_t count; /* total positions including "no button" (position 0) */
+    int32_t values[HID_GAMEPAD_MAX_SWITCH_POSITIONS]; /* [0]=no button, [1..count-1]=button N */
+} hid_gamepad_switch_def_t;
+
+typedef struct {
     uint8_t button_count; /* 0–32 */
     hid_gamepad_button_def_t buttons[HID_GAMEPAD_MAX_BUTTONS];
     uint8_t hat_count; /* 0–4 */
     hid_gamepad_hat_def_t hats[HID_GAMEPAD_MAX_HATS];
+    uint8_t switch_count; /* 0–4 */
+    hid_gamepad_switch_def_t switches[HID_GAMEPAD_MAX_SWITCHES];
     uint8_t axis_count; /* 0–8 */
     hid_gamepad_axis_def_t axes[HID_GAMEPAD_MAX_AXES];
 } hid_gamepad_layout_t;
@@ -58,6 +67,10 @@ void hid_gamepad_layout_add_button(hid_gamepad_layout_t *layout,
 void hid_gamepad_layout_add_hat(hid_gamepad_layout_t *layout,
                                 int32_t centered,
                                 const int32_t *positions, uint8_t count);
+
+/** Add a switch. values[0]=no button, values[1..count-1]=button N. Maps to HID buttons. */
+void hid_gamepad_layout_add_switch(hid_gamepad_layout_t *layout,
+                                    const int32_t *values, uint8_t count);
 
 /** Add a 16-bit signed axis with device raw range [in_min, in_max] scaled to [-32767, 32767]. */
 void hid_gamepad_layout_add_axis(hid_gamepad_layout_t *layout,
@@ -75,15 +88,18 @@ typedef struct {
 
 void hid_gamepad_report_init(hid_gamepad_report_buf_t *report, hid_gamepad_layout_t *layout);
 
-/* ── Field setters (take raw device values, return true if the report changed) */
+/* ── Field setters (take raw device values) ────────────────────────── */
 
-bool hid_gamepad_report_set_button(hid_gamepad_report_buf_t *report,
+void hid_gamepad_report_set_button(hid_gamepad_report_buf_t *report,
                                    uint8_t index, int32_t raw_value);
 
-bool hid_gamepad_report_set_hat(hid_gamepad_report_buf_t *report,
+void hid_gamepad_report_set_hat(hid_gamepad_report_buf_t *report,
                                 uint8_t hat_index, int32_t raw_value);
 
-bool hid_gamepad_report_set_axis(hid_gamepad_report_buf_t *report,
+void hid_gamepad_report_set_switch(hid_gamepad_report_buf_t *report,
+                                    uint8_t switch_index, int32_t raw_value);
+
+void hid_gamepad_report_set_axis(hid_gamepad_report_buf_t *report,
                                  uint8_t axis_index, int32_t raw_value);
 
 /* ═══════════════════════════════════════════════════════════════════════

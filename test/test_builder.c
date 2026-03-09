@@ -254,15 +254,18 @@ void test_builder_hat_with_buttons_offsets(void)
     TEST_ASSERT_EQUAL_HEX8(0x12, r.data[6]);
 }
 
-void test_builder_hat_out_of_range_returns_false(void)
+void test_builder_hat_out_of_range_is_noop(void)
 {
     hid_gamepad_layout_t l = {0};
     hid_gamepad_layout_add_hat(&l, HAT8_CENTERED, hat8_positions, 8);
     hid_gamepad_report_buf_t r;
     hid_gamepad_report_init(&r, &l);
 
-    TEST_ASSERT_TRUE(hid_gamepad_report_set_hat(&r, 0, 3));
-    TEST_ASSERT_FALSE(hid_gamepad_report_set_hat(&r, 1, 0)); /* index 1 doesn't exist */
+    hid_gamepad_report_set_hat(&r, 0, 3);
+    TEST_ASSERT_EQUAL_HEX8(0x03, r.data[0] & 0x0F);
+    /* index 1 doesn't exist — should be a no-op */
+    hid_gamepad_report_set_hat(&r, 1, 0);
+    TEST_ASSERT_EQUAL_HEX8(0x03, r.data[0] & 0x0F);
 }
 
 void test_builder_hat_custom_raw_values(void)
@@ -294,28 +297,7 @@ void test_builder_hat_custom_raw_values(void)
     TEST_ASSERT_EQUAL_HEX8(0x04, r.data[0] & 0x0F);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
- *  Changed-value return tests
- * ═══════════════════════════════════════════════════════════════════════ */
-
-void test_builder_button_returns_true_on_change(void)
-{
-    hid_gamepad_layout_t l = {0};
-    hid_gamepad_layout_add_button(&l, 1, 0);
-    hid_gamepad_report_buf_t r;
-    hid_gamepad_report_init(&r, &l);
-
-    /* Button starts released (0); pressing it changes the report */
-    TEST_ASSERT_TRUE(hid_gamepad_report_set_button(&r, 0, 1));
-    /* Same value again — no change */
-    TEST_ASSERT_FALSE(hid_gamepad_report_set_button(&r, 0, 1));
-    /* Release — changes the report */
-    TEST_ASSERT_TRUE(hid_gamepad_report_set_button(&r, 0, 0));
-    /* Already released — no change */
-    TEST_ASSERT_FALSE(hid_gamepad_report_set_button(&r, 0, 0));
-}
-
-void test_builder_button_hysteresis_no_change(void)
+void test_builder_button_hysteresis(void)
 {
     /* on=100, off=50: values in the dead zone (51–99) don't change state */
     hid_gamepad_layout_t l = {0};
@@ -324,49 +306,14 @@ void test_builder_button_hysteresis_no_change(void)
     hid_gamepad_report_init(&r, &l);
 
     /* Start released; value in dead zone doesn't change anything */
-    TEST_ASSERT_FALSE(hid_gamepad_report_set_button(&r, 0, 75));
+    hid_gamepad_report_set_button(&r, 0, 75);
+    TEST_ASSERT_EQUAL_HEX8(0x00, r.data[0] & 0x01);
     /* Press it */
-    TEST_ASSERT_TRUE(hid_gamepad_report_set_button(&r, 0, 100));
-    /* Dead zone again — stays pressed, no change */
-    TEST_ASSERT_FALSE(hid_gamepad_report_set_button(&r, 0, 75));
-}
-
-void test_builder_hat_returns_true_on_change(void)
-{
-    hid_gamepad_layout_t l = {0};
-    hid_gamepad_layout_add_hat(&l, HAT8_CENTERED, hat8_positions, 8);
-    hid_gamepad_report_buf_t r;
-    hid_gamepad_report_init(&r, &l);
-
-    /* Hat starts centered; moving to North changes it */
-    TEST_ASSERT_TRUE(hid_gamepad_report_set_hat(&r, 0, 0));
-    /* Same direction — no change */
-    TEST_ASSERT_FALSE(hid_gamepad_report_set_hat(&r, 0, 0));
-    /* Move to East — changes */
-    TEST_ASSERT_TRUE(hid_gamepad_report_set_hat(&r, 0, 2));
-    /* Back to centered — changes */
-    TEST_ASSERT_TRUE(hid_gamepad_report_set_hat(&r, 0, HAT8_CENTERED));
-    /* Already centered — no change */
-    TEST_ASSERT_FALSE(hid_gamepad_report_set_hat(&r, 0, HAT8_CENTERED));
-}
-
-void test_builder_axis_returns_true_on_change(void)
-{
-    hid_gamepad_layout_t l = {0};
-    hid_gamepad_layout_add_axis(&l, 0x30, -32767, 32767);
-    hid_gamepad_report_buf_t r;
-    hid_gamepad_report_init(&r, &l);
-
-    /* Axis starts at 0; moving it changes the report */
-    TEST_ASSERT_TRUE(hid_gamepad_report_set_axis(&r, 0, 1000));
-    /* Same value — no change */
-    TEST_ASSERT_FALSE(hid_gamepad_report_set_axis(&r, 0, 1000));
-    /* Different value — changes */
-    TEST_ASSERT_TRUE(hid_gamepad_report_set_axis(&r, 0, -1000));
-    /* Back to zero — changes */
-    TEST_ASSERT_TRUE(hid_gamepad_report_set_axis(&r, 0, 0));
-    /* Zero again — no change */
-    TEST_ASSERT_FALSE(hid_gamepad_report_set_axis(&r, 0, 0));
+    hid_gamepad_report_set_button(&r, 0, 100);
+    TEST_ASSERT_EQUAL_HEX8(0x01, r.data[0] & 0x01);
+    /* Dead zone again — stays pressed */
+    hid_gamepad_report_set_button(&r, 0, 75);
+    TEST_ASSERT_EQUAL_HEX8(0x01, r.data[0] & 0x01);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -393,4 +340,128 @@ void test_builder_scale_button_threshold(void)
 
     hid_gamepad_report_set_button(&r, 0, 4095);  /* at max */
     TEST_ASSERT_EQUAL_HEX8(0x01, r.data[0] & 0x01);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ *  Switch tests
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* Switch with 4 positions: values[0]=off, values[1..3]=buttons */
+static const int32_t sw4_values[] = {0, 10, 20, 30};
+
+void test_builder_switch_adds_buttons(void)
+{
+    /* A switch with 4 positions adds 3 buttons to the report */
+    hid_gamepad_layout_t l = {0};
+    hid_gamepad_layout_add_switch(&l, sw4_values, 4);
+    hid_gamepad_report_buf_t r;
+    hid_gamepad_report_init(&r, &l);
+    /* 3 buttons → 1 byte (3 bits + 5 padding) */
+    TEST_ASSERT_EQUAL_UINT16(1, r.size);
+}
+
+void test_builder_switch_set_positions(void)
+{
+    hid_gamepad_layout_t l = {0};
+    hid_gamepad_layout_add_switch(&l, sw4_values, 4);
+    hid_gamepad_report_buf_t r;
+    hid_gamepad_report_init(&r, &l);
+
+    /* Position 0 (raw 0) = no button */
+    hid_gamepad_report_set_switch(&r, 0, 0);
+    TEST_ASSERT_EQUAL_HEX8(0x00, r.data[0]);
+
+    /* Position 1 (raw 10) = button 0 */
+    hid_gamepad_report_set_switch(&r, 0, 10);
+    TEST_ASSERT_EQUAL_HEX8(0x01, r.data[0]);
+
+    /* Position 2 (raw 20) = button 1 */
+    hid_gamepad_report_set_switch(&r, 0, 20);
+    TEST_ASSERT_EQUAL_HEX8(0x02, r.data[0]);
+
+    /* Position 3 (raw 30) = button 2 */
+    hid_gamepad_report_set_switch(&r, 0, 30);
+    TEST_ASSERT_EQUAL_HEX8(0x04, r.data[0]);
+}
+
+void test_builder_switch_no_match_clears_all(void)
+{
+    hid_gamepad_layout_t l = {0};
+    hid_gamepad_layout_add_switch(&l, sw4_values, 4);
+    hid_gamepad_report_buf_t r;
+    hid_gamepad_report_init(&r, &l);
+
+    /* Set to position 1, then feed unknown value → all cleared */
+    hid_gamepad_report_set_switch(&r, 0, 10);
+    TEST_ASSERT_EQUAL_HEX8(0x01, r.data[0]);
+    hid_gamepad_report_set_switch(&r, 0, 999);
+    TEST_ASSERT_EQUAL_HEX8(0x00, r.data[0]);
+}
+
+void test_builder_switch_with_buttons_offsets(void)
+{
+    /* 8 explicit buttons (1 byte) + switch with 4 positions (3 buttons) + 1 axis */
+    hid_gamepad_layout_t l = {0};
+    for (int i = 0; i < 8; i++)
+        hid_gamepad_layout_add_button(&l, 1, 0);
+    hid_gamepad_layout_add_switch(&l, sw4_values, 4);
+    hid_gamepad_layout_add_axis(&l, 0x30, -32767, 32767);
+    hid_gamepad_report_buf_t r;
+    hid_gamepad_report_init(&r, &l);
+
+    /* 8+3=11 buttons → 2 bytes, axes at offset 2, total = 4 */
+    TEST_ASSERT_EQUAL_UINT16(4, r.size);
+    TEST_ASSERT_EQUAL_UINT8(2, r.axis_offset);
+
+    /* Set explicit button 7 */
+    hid_gamepad_report_set_button(&r, 7, 1);
+    TEST_ASSERT_EQUAL_HEX8(0x80, r.data[0]);
+
+    /* Set switch to position 2 → button index 9 (bit 1 of byte 1) */
+    hid_gamepad_report_set_switch(&r, 0, 20);
+    TEST_ASSERT_EQUAL_HEX8(0x02, r.data[1] & 0x07);
+
+    /* Explicit button still intact */
+    TEST_ASSERT_EQUAL_HEX8(0x80, r.data[0]);
+}
+
+void test_builder_switch_out_of_range_is_noop(void)
+{
+    hid_gamepad_layout_t l = {0};
+    hid_gamepad_layout_add_switch(&l, sw4_values, 4);
+    hid_gamepad_report_buf_t r;
+    hid_gamepad_report_init(&r, &l);
+
+    hid_gamepad_report_set_switch(&r, 0, 10);
+    TEST_ASSERT_EQUAL_HEX8(0x01, r.data[0]);
+    /* index 1 doesn't exist — should be a no-op */
+    hid_gamepad_report_set_switch(&r, 1, 0);
+    TEST_ASSERT_EQUAL_HEX8(0x01, r.data[0]);
+}
+
+void test_builder_two_switches(void)
+{
+    /* Two switches: first has 3 positions (2 buttons), second has 4 positions (3 buttons) */
+    const int32_t sw_a[] = {0, 1, 2};
+    const int32_t sw_b[] = {0, 100, 200, 300};
+    hid_gamepad_layout_t l = {0};
+    hid_gamepad_layout_add_switch(&l, sw_a, 3);
+    hid_gamepad_layout_add_switch(&l, sw_b, 4);
+    hid_gamepad_report_buf_t r;
+    hid_gamepad_report_init(&r, &l);
+
+    /* 2+3=5 buttons → 1 byte */
+    TEST_ASSERT_EQUAL_UINT16(1, r.size);
+
+    /* Switch A position 1 → bit 0 */
+    hid_gamepad_report_set_switch(&r, 0, 1);
+    TEST_ASSERT_EQUAL_HEX8(0x01, r.data[0]);
+
+    /* Switch B position 2 → bit 3 (btn_start=2, i=1 → idx=3) */
+    hid_gamepad_report_set_switch(&r, 1, 200);
+    TEST_ASSERT_EQUAL_HEX8(0x09, r.data[0]); /* bit 0 + bit 3 */
+
+    /* Switch A off → only switch B remains */
+    hid_gamepad_report_set_switch(&r, 0, 0);
+    TEST_ASSERT_EQUAL_HEX8(0x08, r.data[0]);
 }
