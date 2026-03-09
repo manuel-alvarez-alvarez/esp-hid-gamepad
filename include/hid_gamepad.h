@@ -85,7 +85,6 @@ typedef struct {
     uint16_t size;
     uint8_t hat_offset;
     uint8_t axis_offset;
-    uint8_t hat_cache[HID_GAMEPAD_MAX_HATS];
     uint8_t data[HID_GAMEPAD_MAX_REPORT_LENGTH];
 } hid_gamepad_report_buf_t;
 

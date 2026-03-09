@@ -322,7 +322,6 @@ void hid_gamepad_report_init(hid_gamepad_report_buf_t *report, hid_gamepad_layou
     /* Initialize hats to null/centered (count value = outside logical range) */
     for (uint8_t i = 0; i < layout->hat_count; i++) {
         uint8_t null_val = layout->hats[i].count;
-        report->hat_cache[i] = null_val;
         uint8_t byte_idx = report->hat_offset + i / 2;
         if (i % 2 == 0)
             report->data[byte_idx] = (report->data[byte_idx] & 0xF0) | (null_val & 0x0F);
@@ -354,20 +353,13 @@ void hid_gamepad_report_set_hat(hid_gamepad_report_buf_t *report,
     if (raw_value == hat->centered) {
         /* already null */
     } else {
-        uint8_t last = report->hat_cache[hat_index];
-        if (last < hat->count && raw_value == hat->positions[last]) {
-            hid_val = last;
-        } else {
-            for (uint8_t i = 0; i < hat->count; i++) {
-                if (raw_value == hat->positions[i]) {
-                    hid_val = i;
-                    break;
-                }
+        for (uint8_t i = 0; i < hat->count; i++) {
+            if (raw_value == hat->positions[i]) {
+                hid_val = i;
+                break;
             }
         }
     }
-
-    report->hat_cache[hat_index] = (hid_val < hat->count) ? hid_val : hat->count;
 
     uint8_t byte_idx = report->hat_offset + hat_index / 2;
     if (hat_index % 2 == 0)
@@ -380,9 +372,7 @@ void hid_gamepad_report_set_switch(hid_gamepad_report_buf_t *report,
                                     uint8_t switch_index, int32_t raw_value) {
     if (switch_index >= report->layout->switch_count)
         return;
-    const hid_gamepad_switch_def_t *sw = &report->layout->switches[switch_index];
-
-    uint8_t btn_start = sw->button_offset;
+    hid_gamepad_switch_def_t *sw = &report->layout->switches[switch_index];
 
     /* Find which position matches the raw value */
     uint8_t active = 0; /* 0 = no button (values[0] or unknown) */
@@ -393,7 +383,8 @@ void hid_gamepad_report_set_switch(hid_gamepad_report_buf_t *report,
         }
     }
 
-    /* Set/clear the switch's buttons */
+    uint8_t btn_start = sw->button_offset;
+
     for (uint8_t i = 0; i < sw->count - 1; i++) {
         uint8_t btn_idx = btn_start + i;
         uint8_t byte_idx = btn_idx / 8;
@@ -461,9 +452,12 @@ static TaskHandle_t s_task;
 static TaskHandle_t s_joiner;
 static volatile bool s_mounted;
 static volatile bool s_running;
+static volatile bool s_report;
+static volatile bool s_busy;
 static bool s_initialized;
 static uint16_t s_report_size;
 static uint8_t s_report_data[HID_GAMEPAD_MAX_REPORT_LENGTH];
+
 /* ── TinyUSB device task ──────────────────────────────────────────── */
 
 static esp_err_t try_send_report(void) {
@@ -473,26 +467,22 @@ static esp_err_t try_send_report(void) {
     if (!s_mounted) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (!tud_hid_ready()) {
+    if (!s_report || s_busy) {
         return ESP_ERR_TIMEOUT;
     }
     if (!tud_hid_report(0, s_report_data, s_report_size)) {
         return ESP_FAIL;
     }
+    s_report = false;
+    s_busy = true;
     return ESP_OK;
 }
 
 static void usb_device_task(void *arg) {
     (void) arg;
     while (s_running) {
-        tud_task_ext(2, false);
-        bool send = false;
-        while (ulTaskNotifyTake(pdTRUE, 0) > 0) {
-            send = true; // drain SOF ticks
-        }
-        if (send) {
-            try_send_report();
-        }
+        tud_task_ext(1, false);
+        try_send_report();
         taskYIELD();
     }
     if (s_joiner) {
@@ -503,15 +493,9 @@ static void usb_device_task(void *arg) {
 
 /* ── TinyUSB descriptor callbacks ──────────────────────────────────── */
 
-static void notify_report_pending(void) {
-    TaskHandle_t t = s_task;
-    if (!t) return;
-    xTaskNotifyGive(t);
-}
-
 void tud_sof_cb(const uint32_t frame_count) {
     (void) frame_count;
-    notify_report_pending();
+    s_report = true;
 }
 
 uint8_t const *tud_descriptor_device_cb(void) {
@@ -559,6 +543,8 @@ const uint8_t *tud_hid_descriptor_report_cb(uint8_t instance) {
 
 void tud_mount_cb(void) {
     s_mounted = true;
+    s_busy = false;
+    s_report = false;
     tud_sof_cb_enable(true);
     ESP_LOGI(TAG, "mounted");
 }
@@ -576,6 +562,8 @@ void tud_suspend_cb(bool remote_wakeup_en) {
 
 void tud_resume_cb(void) {
     s_mounted = true;
+    s_busy = false;
+    s_report = false;
     tud_sof_cb_enable(true);
     ESP_LOGD(TAG, "resumed");
 }
@@ -611,9 +599,7 @@ void tud_hid_report_complete_cb(uint8_t instance, uint8_t const *report, uint16_
     (void) instance;
     (void) report;
     (void) len;
-    if (try_send_report() != ESP_OK) {
-        notify_report_pending();
-    }
+    s_busy = false;
 }
 
 // Invoked when a transfer wasn't successful
@@ -622,9 +608,8 @@ void tud_hid_report_failed_cb(uint8_t instance, hid_report_type_t report_type, u
     (void) instance;
     (void) report;
     (void) xferred_bytes;
-    if (try_send_report() != ESP_OK) {
-        notify_report_pending();
-    }
+    s_report = true;
+    s_busy = false;
 }
 
 /* ── Public API ────────────────────────────────────────────────────── */
@@ -722,6 +707,8 @@ esp_err_t hid_gamepad_init(const hid_gamepad_config_t *config) {
 
     s_running = true;
     s_initialized = true;
+    s_report = false;
+    s_busy = false;
 
     BaseType_t ret = xTaskCreatePinnedToCore(usb_device_task, "usb_hid",
                                              (uint32_t) stack, NULL,
@@ -753,6 +740,8 @@ esp_err_t hid_gamepad_deinit(void) {
     s_mounted = false;
     s_report_desc_size = 0;
     s_report_size = 0;
+    s_report = false;
+    s_busy = false;
 
     ESP_LOGI(TAG, "deinitialized");
     return ESP_OK;
@@ -766,9 +755,12 @@ esp_err_t hid_gamepad_send_report(hid_gamepad_report_buf_t *report) {
     if (!report) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (!s_initialized || !s_mounted) {
+        return ESP_ERR_INVALID_STATE;
+    }
     s_report_size = report->size;
-    memcpy(s_report_data, report->data, s_report_size);
-    return try_send_report();
+    memcpy(s_report_data, report->data, report->size);
+    return ESP_OK;
 }
 
 #endif /* ESP_PLATFORM */
