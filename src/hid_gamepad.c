@@ -377,7 +377,7 @@ void hid_gamepad_report_set_hat(hid_gamepad_report_buf_t *report,
 }
 
 void hid_gamepad_report_set_switch(hid_gamepad_report_buf_t *report,
-                                    uint8_t switch_index, int32_t raw_value) {
+                                   uint8_t switch_index, int32_t raw_value) {
     if (switch_index >= report->layout->switch_count)
         return;
     hid_gamepad_switch_def_t *sw = &report->layout->switches[switch_index];
@@ -445,6 +445,11 @@ enum {
     STR_IDX_PRODUCT,
     STR_IDX_SERIAL,
     STR_IDX_COUNT,
+};
+
+enum {
+    ITF_NUM_HID = 0,
+    ITF_NUM_TOTAL,
 };
 
 static tusb_desc_device_t s_device_desc;
@@ -620,28 +625,9 @@ void tud_hid_report_failed_cb(uint8_t instance, hid_report_type_t report_type, u
     s_busy = false;
 }
 
-/* ── Public API ────────────────────────────────────────────────────── */
-
-esp_err_t hid_gamepad_init(const hid_gamepad_config_t *config) {
-    if (!config) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (!config->layout) {
-        ESP_LOGE(TAG, "layout must be provided");
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (s_initialized) {
-        ESP_LOGE(TAG, "already initialized");
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    /* 1. Build descriptor from layout */
+static void build_descriptors(const hid_gamepad_config_t *config) {
     s_report_desc_size = (uint16_t) hid_gamepad_desc_build(
         config->layout, s_report_desc, sizeof(s_report_desc));
-    if (s_report_desc_size == 0) {
-        ESP_LOGE(TAG, "descriptor build failed");
-        return ESP_FAIL;
-    }
 
     uint16_t vid = config->vid ? config->vid : fnv1a_16(config->manufacturer);
     uint16_t pid = config->pid ? config->pid : fnv1a_16(config->product);
@@ -667,22 +653,37 @@ esp_err_t hid_gamepad_init(const hid_gamepad_config_t *config) {
     s_strings[STR_IDX_MANUFACTURER] = config->manufacturer;
     s_strings[STR_IDX_PRODUCT] = config->product;
     s_strings[STR_IDX_SERIAL] = config->serial;
+    uint8_t poll_ms = config->poll_interval_ms > 0 ? config->poll_interval_ms : 1;
+    uint8_t desc[] = {
+        TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0,
+                              CONFIG_TOTAL_LEN,
+                              TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
+        TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_NONE,
+                           s_report_desc_size,
+                           0x81, CFG_TUD_HID_EP_BUFSIZE, poll_ms),
+    };
+    memcpy(s_config_desc, desc, sizeof(desc));
+}
 
-    uint8_t poll_ms = config->poll_interval_ms > 0 ? config->poll_interval_ms : 1; {
-        enum { ITF_NUM_HID = 0, ITF_NUM_TOTAL };
-        uint8_t desc[] = {
-            TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0,
-                                  CONFIG_TOTAL_LEN,
-                                  TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
-            TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_NONE,
-                               s_report_desc_size,
-                               0x81, CFG_TUD_HID_EP_BUFSIZE, poll_ms),
-        };
-        memcpy(s_config_desc, desc, sizeof(desc));
+/* ── Public API ────────────────────────────────────────────────────── */
+
+esp_err_t hid_gamepad_init(const hid_gamepad_config_t *config) {
+    if (!config) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!config->layout) {
+        ESP_LOGE(TAG, "layout must be provided");
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (s_initialized) {
+        ESP_LOGE(TAG, "already initialized");
+        return ESP_ERR_INVALID_STATE;
     }
 
-    /* 2. USB PHY — must be done before tusb_init() on ESP32-S2/S3 */
+    /* 1. Build descriptors */
+    build_descriptors(config);
 
+    /* 2. USB PHY — must be done before tusb_init() on ESP32-S2/S3 */
     const usb_phy_config_t phy_conf = {
         .controller = USB_PHY_CTRL_OTG,
         .target = USB_PHY_TARGET_INT,
@@ -696,7 +697,6 @@ esp_err_t hid_gamepad_init(const hid_gamepad_config_t *config) {
     }
 
     /* 3. TinyUSB */
-
     const tusb_rhport_init_t tinyusb_init = {
         .role = TUSB_ROLE_DEVICE,
         .speed = TUSB_SPEED_AUTO,
@@ -708,7 +708,6 @@ esp_err_t hid_gamepad_init(const hid_gamepad_config_t *config) {
     }
 
     /* 4. USB device task */
-
     int priority = config->task_priority > 0 ? config->task_priority : DEFAULT_TASK_PRIORITY;
     size_t stack = config->task_stack_size > 0 ? config->task_stack_size : DEFAULT_TASK_STACK;
     BaseType_t core = config->task_core >= 0 ? config->task_core : DEFAULT_TASK_CORE;
@@ -730,7 +729,7 @@ esp_err_t hid_gamepad_init(const hid_gamepad_config_t *config) {
     }
 
     ESP_LOGI(TAG, "initialized (VID=%04X PID=%04X desc=%u bytes)",
-             vid, pid, s_report_desc_size);
+             s_device_desc.idVendor, s_device_desc.idProduct, s_report_desc_size);
     return ESP_OK;
 }
 
@@ -752,6 +751,34 @@ esp_err_t hid_gamepad_deinit(void) {
     s_busy = false;
 
     ESP_LOGI(TAG, "deinitialized");
+    return ESP_OK;
+}
+
+esp_err_t hid_gamepad_update(const hid_gamepad_config_t *config) {
+    if (!config) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!config->layout) {
+        ESP_LOGE(TAG, "layout must be provided");
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_initialized) {
+        ESP_LOGE(TAG, "not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    tud_disconnect();
+    s_mounted = false;
+    s_report = false;
+    s_busy = false;
+    s_report_size = 0;
+    build_descriptors(config);
+
+    vTaskDelay(pdMS_TO_TICKS(150));
+    tud_connect();
+
+    ESP_LOGI(TAG, "updated (VID=%04X PID=%04X desc=%u bytes)",
+             s_device_desc.idVendor, s_device_desc.idProduct, s_report_desc_size);
     return ESP_OK;
 }
 

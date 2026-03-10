@@ -140,6 +140,8 @@ typedef struct {
 
 esp_err_t hid_gamepad_init(const hid_gamepad_config_t *config);
 
+esp_err_t hid_gamepad_update(const hid_gamepad_config_t *config);
+
 esp_err_t hid_gamepad_deinit(void);
 
 bool hid_gamepad_is_mounted(void);

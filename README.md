@@ -109,6 +109,7 @@ All builder helpers now return `true` on success and `false` when the layout is 
 | Function | Description |
 |---|---|
 | `hid_gamepad_init(config)` | Initialize the USB HID device; starts TinyUSB and the background task |
+| `hid_gamepad_update(config)` | Rebuild descriptors and force USB re-enumeration with a new configuration |
 | `hid_gamepad_deinit()` | Stop the task and release USB resources |
 | `hid_gamepad_is_mounted()` | Returns `true` if a USB host is connected |
 | `hid_gamepad_send_report(report)` | Send the current report to the host |
