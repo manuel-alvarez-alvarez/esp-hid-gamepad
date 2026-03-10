@@ -1,4 +1,4 @@
-version: "1.0.1"
+version: "1.1.0"
 description: "USB HID gamepad library for ESP-IDF"
 url: "https://github.com/manuel-alvarez-alvarez/esp-hid-gamepad"
 targets:
