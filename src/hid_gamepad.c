@@ -83,11 +83,21 @@ static int16_t scale_axis(const hid_gamepad_axis_def_t *axis, int32_t val) {
     return (int16_t) (((int64_t) (clamped - axis->in_min) * HID_AXIS_RANGE) / range + HID_AXIS_MIN);
 }
 
+static uint8_t next_bit(const hid_gamepad_layout_t *layout) {
+    uint8_t bit = 0;
+    for (uint8_t i = 0; i < layout->button_count; i++) {
+        uint8_t end = layout->buttons[i].bit_offset + 1;
+        if (end > bit) bit = end;
+    }
+    for (uint8_t i = 0; i < layout->switch_count; i++) {
+        uint8_t end = layout->switches[i].button_offset + layout->switches[i].count - 1;
+        if (end > bit) bit = end;
+    }
+    return bit;
+}
+
 static uint8_t total_button_count(const hid_gamepad_layout_t *layout) {
-    uint8_t total = layout->button_count;
-    for (uint8_t i = 0; i < layout->switch_count; i++)
-        total += layout->switches[i].count - 1;
-    return total;
+    return next_bit(layout);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -239,6 +249,7 @@ bool hid_gamepad_layout_add_button(hid_gamepad_layout_t *layout,
     }
     layout->buttons[layout->button_count].on = on;
     layout->buttons[layout->button_count].off = off;
+    layout->buttons[layout->button_count].bit_offset = next_bit(layout);
     layout->button_count++;
     return true;
 }
@@ -273,11 +284,7 @@ bool hid_gamepad_layout_add_switch(hid_gamepad_layout_t *layout,
     hid_gamepad_switch_def_t *sw = &layout->switches[layout->switch_count];
     sw->count = count;
     memcpy(sw->values, values, count * sizeof(int32_t));
-    uint8_t btn_offset = layout->button_count;
-    for (uint8_t i = 0; i < layout->switch_count; i++) {
-        btn_offset += layout->switches[i].count - 1;
-    }
-    sw->button_offset = btn_offset;
+    sw->button_offset = next_bit(layout);
     layout->switch_count++;
     return true;
 }
@@ -334,8 +341,9 @@ void hid_gamepad_report_set_button(hid_gamepad_report_buf_t *report,
                                    uint8_t index, int32_t raw_value) {
     if (index >= report->layout->button_count)
         return;
-    uint8_t byte_idx = index / 8;
-    uint8_t bit_idx = index % 8;
+    uint8_t bit_pos = report->layout->buttons[index].bit_offset;
+    uint8_t byte_idx = bit_pos / 8;
+    uint8_t bit_idx = bit_pos % 8;
     if (raw_value >= report->layout->buttons[index].on)
         report->data[byte_idx] |= (1u << bit_idx);
     else if (raw_value <= report->layout->buttons[index].off)

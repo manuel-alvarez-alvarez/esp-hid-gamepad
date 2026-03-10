@@ -42,6 +42,8 @@ void app_main(void) {
     /* Build layout */
     hid_gamepad_layout_t layout = {0};
     hid_gamepad_layout_add_button(&layout, BUTTON_ON, BUTTON_OFF);
+    static const int32_t profile_switch[] = {0, 100, 200};    /* 3-position selector */
+    hid_gamepad_layout_add_switch(&layout, profile_switch, 3);
     hid_gamepad_layout_add_button(&layout, BUTTON_ON, BUTTON_OFF);
     hid_gamepad_layout_add_hat(&layout, HAT_CENTERED, hat_positions, 8);
     hid_gamepad_layout_add_axis(&layout, HID_USAGE_DESKTOP_X, AXIS_MIN, AXIS_MAX);
@@ -91,6 +93,10 @@ void app_main(void) {
         /* Alternate buttons */
         hid_gamepad_report_set_button(&report, 0, (tick / 50) % 2);
         hid_gamepad_report_set_button(&report, 1, ((tick / 50) + 1) % 2);
+
+        /* Switch */
+        int switch_idx = tick % 3;
+        hid_gamepad_report_set_switch(&report, 0, profile_switch[switch_idx]);
 
         hid_gamepad_send_report(&report);
 

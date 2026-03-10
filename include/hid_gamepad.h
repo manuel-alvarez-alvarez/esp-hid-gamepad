@@ -27,6 +27,7 @@ extern "C" {
 typedef struct {
     int32_t on; /* raw value >= on → pressed */
     int32_t off; /* raw value <= off → released */
+    uint8_t bit_offset; /* bit position in the report button field */
 } hid_gamepad_button_def_t;
 
 typedef struct {

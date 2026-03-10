@@ -59,6 +59,7 @@ extern void test_builder_switch_with_buttons_offsets(void);
 extern void test_builder_switch_out_of_range_is_noop(void);
 extern void test_builder_two_switches(void);
 extern void test_builder_switch_rejects_zero_count(void);
+extern void test_builder_switch_between_buttons(void);
 
 int main(int argc, char *argv[])
 {
@@ -116,6 +117,7 @@ int main(int argc, char *argv[])
     RUN_FILTERED_TEST(test_builder_switch_out_of_range_is_noop);
     RUN_FILTERED_TEST(test_builder_two_switches);
     RUN_FILTERED_TEST(test_builder_switch_rejects_zero_count);
+    RUN_FILTERED_TEST(test_builder_switch_between_buttons);
 
     return UNITY_END();
 }
