@@ -1,4 +1,5 @@
 #include <math.h>
+#include "freertos/FreeRTOS.h"
 #include "hid_gamepad.h"
 #include "class/hid/hid.h"
 #include "esp_log.h"
